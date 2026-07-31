@@ -72,7 +72,9 @@ class DraftTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             draft = Path(directory)
             (draft / "draft_content.json").write_text("{}", encoding="utf-8")
-            with patch("capcut_draft.desktop.subprocess.Popen") as launch:
+            with patch("capcut_draft.desktop.sys.platform", "darwin"), patch(
+                "capcut_draft.desktop.subprocess.Popen"
+            ) as launch:
                 result = open_desktop(draft)
             self.assertEqual(result["status"], "launched")
             launch.assert_called_once()
