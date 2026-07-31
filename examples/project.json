@@ -1,0 +1,16 @@
+{
+  "$schema": "https://clipcraft-labs.github.io/schemas/project.v1.json",
+  "version": 1,
+  "name": "Synthetic Demo",
+  "canvas": { "width": 1080, "height": 1920, "fps": 30 },
+  "tracks": [
+    {
+      "type": "text",
+      "items": [
+        { "text": "Hello Clipcraft", "at": 0, "duration": 3, "ref": "title" }
+      ]
+    }
+  ],
+  "operations": []
+}
+

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "clipcraft-capcut-draft"
+version = "0.1.0"
+description = "Compile vendor-neutral Clipcraft projects into CapCut Desktop drafts"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Clipcraft Labs" }]
+
+[project.scripts]
+clipcraft-draft = "capcut_draft.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/capcut_draft"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
