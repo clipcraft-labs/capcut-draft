@@ -2,10 +2,11 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from capcut_draft import ProjectError, compile_project, load_project
 from capcut_draft.validator import validate_draft
-from capcut_draft.desktop import apply_registration, plan_registration
+from capcut_draft.desktop import apply_registration, open_desktop, plan_registration
 from capcut_draft.assets import AssetStore
 
 
@@ -59,6 +60,15 @@ class DraftTests(unittest.TestCase):
             self.assertEqual(second.action, "update")
             apply_registration(second)
             self.assertTrue((drafts / "root_meta_info.json.bak").is_file())
+
+    def test_open_desktop_launches_capcut(self):
+        with tempfile.TemporaryDirectory() as directory:
+            draft = Path(directory)
+            (draft / "draft_content.json").write_text("{}", encoding="utf-8")
+            with patch("capcut_draft.desktop.subprocess.Popen") as launch:
+                result = open_desktop(draft)
+            self.assertEqual(result["status"], "launched")
+            launch.assert_called_once()
 
     def test_rejects_missing_asset(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 import time
 from typing import Any
 
@@ -85,3 +87,16 @@ def apply_registration(plan: RegistrationPlan) -> dict[str, Any]:
     metadata.write_text(json.dumps(entry, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     return {"registered": True, "draft_id": identifier, "backup": str(root_index) + ".bak" if plan.action == "update" else None}
 
+
+def open_desktop(draft: str | Path, *, app: str = "CapCut") -> dict[str, str]:
+    draft_path = Path(draft).resolve()
+    if not (draft_path / "draft_content.json").is_file() and not (draft_path / "draft_info.json").is_file():
+        raise ProjectError("Draft has no readable timeline file")
+    if sys.platform == "darwin":
+        command = ["open", "-a", app]
+    elif sys.platform == "win32":
+        command = ["cmd", "/c", "start", "", app]
+    else:
+        raise ProjectError("CapCut Desktop opening is supported on macOS and Windows")
+    subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return {"draft": str(draft_path), "app": app, "status": "launched"}

@@ -12,6 +12,7 @@ clipcraft-draft validate examples/project.json
 clipcraft-draft build examples/project.json --out examples/build/demo
 clipcraft-draft register examples/build/demo --drafts-dir /path/to/Desktop/drafts
 clipcraft-draft register examples/build/demo --drafts-dir /path/to/Desktop/drafts --apply
+clipcraft-draft open examples/build/demo
 ```
 
 The source project remains the source of truth. Generated `draft_content.json`

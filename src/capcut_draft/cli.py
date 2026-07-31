@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from .compiler import compile_project
-from .desktop import apply_registration, plan_registration
+from .desktop import apply_registration, open_desktop, plan_registration
 from .project import load_project
 from .validator import validate_draft
 
@@ -24,6 +24,9 @@ def parser() -> argparse.ArgumentParser:
     register.add_argument("draft", type=Path)
     register.add_argument("--drafts-dir", type=Path, required=True)
     register.add_argument("--apply", action="store_true")
+    open_command = commands.add_parser("open", help="Launch CapCut Desktop for a registered draft")
+    open_command.add_argument("draft", type=Path)
+    open_command.add_argument("--app", default="CapCut")
     return root
 
 
@@ -41,6 +44,9 @@ def main(argv: list[str] | None = None) -> int:
         plan = plan_registration(args.draft, args.drafts_dir)
         result = apply_registration(plan) if args.apply else {"apply": False, "plan": plan.to_dict()}
         print(json.dumps({"ok": True, **result}, ensure_ascii=False))
+        return 0
+    if args.command == "open":
+        print(json.dumps({"ok": True, **open_desktop(args.draft, app=args.app)}, ensure_ascii=False))
         return 0
     project = load_project(args.project)
     result = compile_project(project, args.out, lock_path=args.lock, asset_store=args.asset_store)
