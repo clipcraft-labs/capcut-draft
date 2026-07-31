@@ -6,6 +6,7 @@ import unittest
 from capcut_draft import ProjectError, compile_project, load_project
 from capcut_draft.validator import validate_draft
 from capcut_draft.desktop import apply_registration, plan_registration
+from capcut_draft.assets import AssetStore
 
 
 class DraftTests(unittest.TestCase):
@@ -66,3 +67,18 @@ class DraftTests(unittest.TestCase):
             project_path.write_text(json.dumps({"version": 1, "canvas": {"width": 1, "height": 1, "fps": 1}, "tracks": [{"type": "video", "items": [{"src": "missing.mp4", "at": 0, "duration": 1}]}]}), encoding="utf-8")
             with self.assertRaises(ProjectError):
                 compile_project(load_project(project_path), root / "build")
+
+    def test_locked_content_addressed_audio_compiles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = AssetStore(root / "store")
+            stored = store.put(b"synthetic audio", suffix="m4a")
+            lock = root / "clipcraft.lock"
+            lock.write_text(json.dumps({"version": 1, "resources": {"music": {"provider": "capcut", "kind": "music", "name": "Synthetic", "asset_hash": stored.digest}}}), encoding="utf-8")
+            project = root / "project.json"
+            project.write_text(json.dumps({"version": 1, "canvas": {"width": 1, "height": 1, "fps": 1}, "tracks": [{"type": "audio", "items": [{"resource": "music", "at": 0, "duration": 1}]}]}), encoding="utf-8")
+            result = compile_project(load_project(project), root / "build", lock_path=lock, asset_store=store.root)
+            draft = json.loads((result.output / "draft_content.json").read_text(encoding="utf-8"))
+            material = draft["materials"]["audios"][0]
+            self.assertEqual(material["content_hash"], f"sha256:{stored.digest}")
+            self.assertTrue(Path(material["path"]).is_file())

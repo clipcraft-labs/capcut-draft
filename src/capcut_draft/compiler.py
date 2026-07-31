@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from .lockfile import load_lock
 from .project import Project, ProjectError
+from .assets import AssetStore
 
 US = 1_000_000
 
@@ -31,11 +32,12 @@ def _materials() -> dict[str, list[dict[str, Any]]]:
     return {name: [] for name in names}
 
 
-def compile_project(project: Project, output: str | Path, *, lock_path: str | Path | None = None) -> BuildResult:
+def compile_project(project: Project, output: str | Path, *, lock_path: str | Path | None = None, asset_store: str | Path | None = None) -> BuildResult:
     out = Path(output).resolve()
     if out.exists():
         raise ProjectError(f"Output already exists: {out}")
     resources = load_lock(lock_path)
+    store = AssetStore(asset_store)
     materials = _materials()
     tracks: list[dict[str, Any]] = []
     refs: dict[str, tuple[dict[str, Any], dict[str, Any], int, int]] = {}
@@ -52,18 +54,27 @@ def compile_project(project: Project, output: str | Path, *, lock_path: str | Pa
                 content = json.dumps({"text": item["text"], "styles": []}, ensure_ascii=False, separators=(",", ":"))
                 materials["texts"].append({"id": material_id, "type": "text", "content": content, "font_size": item.get("fontSize", 15), "text_color": item.get("color", "#FFFFFF")})
             else:
-                source = (project.path.parent / item["src"]).resolve()
-                if not source.is_file():
-                    raise ProjectError(f"Local asset does not exist: {source}")
                 asset_dir = out / "assets" / source_track["type"]
-                asset_dir.mkdir(parents=True, exist_ok=True)
-                digest = hashlib.sha256(source.read_bytes()).hexdigest()
-                destination = asset_dir / f"{digest}{source.suffix.lower()}"
-                shutil.copy2(source, destination)
+                if item.get("resource"):
+                    locked = resources.get(item["resource"])
+                    if locked is None or not locked.get("asset_hash"):
+                        raise ProjectError(f"Resource {item['resource']!r} has no locked asset_hash")
+                    digest = str(locked["asset_hash"])
+                    destination = store.copy_into(digest, asset_dir)
+                    display_name = str(locked.get("name") or destination.name)
+                else:
+                    source = (project.path.parent / item["src"]).resolve()
+                    if not source.is_file():
+                        raise ProjectError(f"Local asset does not exist: {source}")
+                    asset_dir.mkdir(parents=True, exist_ok=True)
+                    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+                    destination = asset_dir / f"{digest}{source.suffix.lower()}"
+                    shutil.copy2(source, destination)
+                    display_name = source.name
                 entry = {
                     "id": material_id,
                     "type": source_track["type"],
-                    "name": source.name,
+                    "name": display_name,
                     "path": str(destination),
                     "content_hash": f"sha256:{digest}",
                 }

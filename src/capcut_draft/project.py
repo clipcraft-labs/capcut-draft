@@ -59,9 +59,11 @@ def validate_project(data: Any) -> None:
                 raise ProjectError(f"{where}.at must be non-negative seconds")
             if not isinstance(item.get("duration"), (int, float)) or item["duration"] <= 0:
                 raise ProjectError(f"{where}.duration must be positive seconds")
-            required = "text" if track["type"] == "text" else "src"
-            if not isinstance(item.get(required), str) or not item[required]:
-                raise ProjectError(f"{where}.{required} is required")
+            if track["type"] == "text":
+                if not isinstance(item.get("text"), str) or not item["text"]:
+                    raise ProjectError(f"{where}.text is required")
+            elif not any(isinstance(item.get(key), str) and item[key] for key in ("src", "resource")):
+                raise ProjectError(f"{where}.src or {where}.resource is required")
             ref = item.get("ref")
             if ref:
                 if not isinstance(ref, str) or ref in refs:
