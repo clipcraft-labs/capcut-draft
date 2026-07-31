@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/clipcraft-labs/capcut-draft/main/schemas/project.v1.schema.json",
+  "title": "Clipcraft Project v1",
+  "type": "object",
+  "required": ["version", "canvas", "tracks"],
+  "properties": {
+    "$schema": { "type": "string", "format": "uri" },
+    "version": { "const": 1 },
+    "name": { "type": "string" },
+    "target": {
+      "type": "object",
+      "properties": {
+        "app": { "enum": ["capcut"] },
+        "version": { "type": "string" },
+        "os": { "enum": ["mac", "windows"] }
+      },
+      "additionalProperties": false
+    },
+    "canvas": {
+      "type": "object",
+      "required": ["width", "height", "fps"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "fps": { "type": "integer", "minimum": 1 },
+        "ratio": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "tracks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["type", "items"],
+        "properties": {
+          "type": { "enum": ["video", "audio", "text"] },
+          "name": { "type": "string" },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["at", "duration"],
+              "properties": {
+                "src": { "type": "string" },
+                "resource": { "type": "string" },
+                "text": { "type": "string" },
+                "at": { "type": "number", "minimum": 0 },
+                "duration": { "type": "number", "exclusiveMinimum": 0 },
+                "ref": { "type": "string" },
+                "fontSize": { "type": "number" },
+                "color": { "type": "string" }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "target", "resource"],
+        "properties": {
+          "type": { "enum": ["effect", "filter", "transition", "caption-template"] },
+          "target": { "type": "string" },
+          "resource": { "type": "string" },
+          "duration": { "type": "number", "exclusiveMinimum": 0 },
+          "intensity": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
+

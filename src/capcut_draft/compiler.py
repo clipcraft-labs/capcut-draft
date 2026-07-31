@@ -130,7 +130,8 @@ def compile_project(project: Project, output: str | Path, *, lock_path: str | Pa
             target_material["effect_resource_id"] = resource_id
 
     canvas = project.data["canvas"]
-    draft = {"id": _id(), "name": project.name, "duration": duration_us, "fps": canvas["fps"], "canvas_config": {"width": canvas["width"], "height": canvas["height"], "ratio": canvas.get("ratio", "")}, "tracks": tracks, "materials": materials, "platform": {"app_source": "cc", "os": "mac", "app_version": ""}, "free_render_index_mode_on": False}
+    target = project.data.get("target", {})
+    draft = {"id": _id(), "name": project.name, "duration": duration_us, "fps": canvas["fps"], "canvas_config": {"width": canvas["width"], "height": canvas["height"], "ratio": canvas.get("ratio", "")}, "tracks": tracks, "materials": materials, "platform": {"app_source": "cc", "os": target.get("os", "mac"), "app_version": target.get("version", "")}, "free_render_index_mode_on": False}
     out.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(draft, ensure_ascii=False, separators=(",", ":"))
     (out / "draft_content.json").write_text(encoded, encoding="utf-8")

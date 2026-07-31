@@ -41,6 +41,13 @@ def validate_project(data: Any) -> None:
     for key in ("width", "height", "fps"):
         if not isinstance(canvas.get(key), int) or canvas[key] <= 0:
             raise ProjectError(f"canvas.{key} must be a positive integer")
+    target = data.get("target", {})
+    if not isinstance(target, dict):
+        raise ProjectError("target must be an object")
+    if target.get("app", "capcut") != "capcut":
+        raise ProjectError("target.app must be capcut")
+    if target.get("os", "mac") not in {"mac", "windows"}:
+        raise ProjectError("target.os must be mac or windows")
     tracks = data.get("tracks")
     if not isinstance(tracks, list) or not tracks:
         raise ProjectError("tracks must be a non-empty array")

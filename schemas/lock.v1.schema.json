@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/clipcraft-labs/capcut-draft/main/schemas/lock.v1.schema.json",
+  "title": "Clipcraft Lock v1",
+  "type": "object",
+  "required": ["version", "resources"],
+  "properties": {
+    "version": { "const": 1 },
+    "resources": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["provider", "kind", "id", "name"],
+        "properties": {
+          "provider": { "type": "string" },
+          "kind": { "type": "string" },
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "effect_id": { "type": ["string", "null"] },
+          "resource_id": { "type": ["string", "null"] },
+          "asset_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size": { "type": "integer", "minimum": 0 },
+          "vip": { "type": ["boolean", "null"] },
+          "commercial": { "type": ["boolean", "null"] }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}
+
