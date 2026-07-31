@@ -19,6 +19,13 @@ class DraftTests(unittest.TestCase):
             result = compile_project(load_project(project_path), root / "build")
             self.assertEqual((result.tracks, result.segments, result.duration_us), (1, 1, 2_000_000))
             self.assertEqual(validate_draft(result.output)["materials"], 1)
+            draft = json.loads((result.output / "draft_info.json").read_text(encoding="utf-8"))
+            self.assertEqual((draft["version"], draft["new_version"]), (360000, "179.0.0"))
+            self.assertEqual(draft["platform"]["app_version"], "9.1.0")
+            project = json.loads((result.output / "Timelines" / "project.json").read_text(encoding="utf-8"))
+            timeline = result.output / "Timelines" / project["main_timeline_id"] / "draft_info.json"
+            self.assertTrue(timeline.is_file())
+            self.assertEqual(json.loads(timeline.read_text(encoding="utf-8"))["tracks"][0]["type"], "text")
 
     def test_locked_effect_compiles(self):
         with tempfile.TemporaryDirectory() as directory:

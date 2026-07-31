@@ -52,3 +52,9 @@ filename so basename collisions cannot change a build.
 Desktop registration is plan-first. Without `--apply`, the command only prints
 the files it would change. Applying registration preserves existing metadata
 with `.bak` files and refuses drafts outside the selected drafts directory.
+
+Generated CapCut 9.1 builds include the full empty material containers,
+timeline project index, timeline backup, project metadata, and auxiliary JSON
+files expected by the current macOS Desktop layout. Platform device, disk, and
+network identifiers are deliberately omitted and are never copied from a real
+Desktop project.
