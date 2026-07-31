@@ -82,6 +82,28 @@ def _keyframes() -> dict[str, list[Any]]:
     return {name: [] for name in ("videos", "audios", "texts", "stickers", "filters", "adjusts", "handwrites", "effects")}
 
 
+def _catalog_identity(resource: dict[str, Any]) -> dict[str, Any]:
+    """Return stable catalogue provenance safe to copy into build metadata."""
+    identifier = str(resource.get("id") or resource.get("resource_id") or resource.get("effect_id") or "")
+    resource_id = resource.get("resource_id")
+    effect_id = resource.get("effect_id")
+    category = resource.get("category") if isinstance(resource.get("category"), dict) else {}
+    return {
+        "provider": resource.get("provider"),
+        "kind": resource.get("kind"),
+        "id": identifier,
+        "resource_id": str(resource_id) if resource_id is not None else None,
+        "effect_id": str(effect_id) if effect_id is not None else None,
+        "name": resource.get("name"),
+        "category": dict(category),
+        "vip": resource.get("vip"),
+        "commercial": resource.get("commercial"),
+        "duration": resource.get("duration"),
+        "asset_hash": resource.get("asset_hash"),
+        "size": resource.get("size"),
+    }
+
+
 def compile_project(
     project: Project,
     output: str | Path,
@@ -102,6 +124,7 @@ def compile_project(
     materials = _materials()
     tracks: list[dict[str, Any]] = []
     refs: dict[str, tuple[dict[str, Any], dict[str, Any], int, int]] = {}
+    resource_uses: list[dict[str, Any]] = []
     duration_us = 0
 
     for source_track in project.data["tracks"]:
@@ -125,6 +148,12 @@ def compile_project(
                     digest = str(locked["asset_hash"])
                     destination = store.copy_into(digest, asset_dir)
                     display_name = str(locked.get("name") or destination.name)
+                    identity = _catalog_identity(locked)
+                    resource_uses.append({
+                        "resource": item["resource"],
+                        "usage": source_type,
+                        "target": item.get("ref"),
+                    })
                 else:
                     source = (project.path.parent / item["src"]).resolve()
                     if not source.is_file():
@@ -134,6 +163,7 @@ def compile_project(
                     destination = asset_dir / f"{digest}{source.suffix.lower()}"
                     shutil.copy2(source, destination)
                     display_name = source.name
+                    identity = None
                 entry = {
                     "id": material_id,
                     "type": "photo" if source_type == "image" else source_type,
@@ -155,6 +185,15 @@ def compile_project(
                     "audio_fade": None, "remote_url": None,
                     "has_audio": source_type == "video",
                 }
+                if identity is not None:
+                    entry.update({
+                        "provider": identity["provider"],
+                        "resource_id": identity["resource_id"] or identity["id"],
+                        "category_id": str(identity["category"].get("id") or ""),
+                        "category_name": str(identity["category"].get("name") or ""),
+                    })
+                    if identity["kind"] == "music":
+                        entry["music_id"] = identity["id"]
                 materials["videos" if source_type in {"video", "image"} else "audios"].append(entry)
             segment = {"id": segment_id, "material_id": material_id, "raw_segment_id": track["id"], "target_timerange": {"start": start, "duration": duration}, "source_timerange": {"start": 0, "duration": duration}, "speed": 1.0, "volume": 1.0, "visible": True, "reverse": False, "clip": _clip(), "uniform_scale": {"on": True, "value": 1.0}, "extra_material_refs": [], "common_keyframes": [], "keyframe_refs": [], "render_index": 0, "track_render_index": 0, "track_attribute": 0}
             track["segments"].append(segment)
@@ -175,6 +214,12 @@ def compile_project(
         if not resource_id:
             raise ProjectError(f"Resource {operation['resource']!r} has no resource_id")
         kind = operation["type"]
+        resource_uses.append({
+            "resource": operation["resource"],
+            "usage": kind,
+            "target": operation["target"],
+        })
+        category = resource.get("category") if isinstance(resource.get("category"), dict) else {}
         if kind in {"effect", "filter"}:
             materials["video_effects"].append({
                 "id": material_id,
@@ -187,7 +232,9 @@ def compile_project(
                 "source_platform": 1,
                 "value": operation.get("intensity", 1.0),
                 "adjust_params": [], "apply_time_range": None,
-                "category_id": "", "category_name": "", "common_keyframes": [],
+                "category_id": str(category.get("id") or ""),
+                "category_name": str(category.get("name") or ""),
+                "common_keyframes": [],
                 "disable_effect_faces": [], "formula_id": "", "platform": "all",
                 "render_index": 11000, "time_range": None,
                 "track_render_index": 0, "version": "",
@@ -204,6 +251,8 @@ def compile_project(
                 "effect_id": effect_id,
                 "duration": transition_duration,
                 "is_overlap": bool(resource.get("is_overlap", True)),
+                "category_id": str(category.get("id") or ""),
+                "category_name": str(category.get("name") or ""),
             })
             target_segment["extra_material_refs"].append(material_id)
         else:
@@ -211,6 +260,7 @@ def compile_project(
                 raise ProjectError("caption-template operations require a text target")
             target_material["effect_id"] = effect_id
             target_material["effect_resource_id"] = resource_id
+            target_material["effect_category_id"] = str(category.get("id") or "")
 
     canvas = project.data["canvas"]
     draft_id = _id()
@@ -252,4 +302,16 @@ def compile_project(
     (out / "draft_meta_info.json").write_text(json.dumps(metadata, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     (out / "attachment_pc_common.json").write_text('{"ai_packaging_infos":[],"ai_packaging_report_info":{},"broll":[],"commercial_music_category_ids":[],"pc_feature_flag":{},"recognize_tasks":[],"reference_lines_config":{},"safe_area_type":0,"template_item_infos":[],"unlock_template_ids":[]}', encoding="utf-8")
     (out / "performance_opt_info.json").write_text('{"manual_cancle_precombine_segs":[],"need_auto_precombine_segs":[]}', encoding="utf-8")
+    used_keys = list(dict.fromkeys(use["resource"] for use in resource_uses))
+    build_manifest = {
+        "version": 1,
+        "project": project.name,
+        "draft_id": draft_id,
+        "resources": {key: _catalog_identity(resources[key]) for key in used_keys},
+        "uses": resource_uses,
+    }
+    (out / "clipcraft_build.json").write_text(
+        json.dumps(build_manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     return BuildResult(out, len(tracks), sum(len(track["segments"]) for track in tracks), duration_us)

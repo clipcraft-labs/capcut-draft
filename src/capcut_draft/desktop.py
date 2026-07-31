@@ -24,6 +24,62 @@ class RegistrationPlan:
         return asdict(self)
 
 
+def _rebase_value(value: Any, old_root: Path, new_root: Path) -> tuple[Any, bool]:
+    if isinstance(value, dict):
+        changed = False
+        result: dict[str, Any] = {}
+        for key, child in value.items():
+            result[key], child_changed = _rebase_value(child, old_root, new_root)
+            changed = changed or child_changed
+        return result, changed
+    if isinstance(value, list):
+        changed = False
+        result: list[Any] = []
+        for child in value:
+            rewritten, child_changed = _rebase_value(child, old_root, new_root)
+            result.append(rewritten)
+            changed = changed or child_changed
+        return result, changed
+    if isinstance(value, str) and value.startswith(str(old_root)):
+        try:
+            relative = Path(value).relative_to(old_root)
+        except ValueError:
+            return value, False
+        candidate = new_root / relative
+        if relative == Path(".") or candidate.exists():
+            return str(candidate), True
+    return value, False
+
+
+def _rebase_draft_documents(draft_path: Path) -> int:
+    documents = [draft_path / "draft_content.json", draft_path / "draft_info.json"]
+    documents.extend((draft_path / "Timelines").glob("*/draft_info.json"))
+    documents.extend((draft_path / "Timelines").glob("*/draft_info.json.bak"))
+    changed_files = 0
+    for document in documents:
+        if not document.is_file():
+            continue
+        value = json.loads(document.read_text(encoding="utf-8"))
+        recorded_root = value.get("path")
+        if not isinstance(recorded_root, str) or not Path(recorded_root).is_absolute():
+            continue
+        old_root = Path(recorded_root)
+        if old_root == draft_path:
+            continue
+        rewritten, changed = _rebase_value(value, old_root, draft_path)
+        if not changed:
+            continue
+        backup = document.with_name(document.name + ".clipcraft.bak")
+        if not backup.exists():
+            shutil.copy2(document, backup)
+        document.write_text(
+            json.dumps(rewritten, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        changed_files += 1
+    return changed_files
+
+
 def plan_registration(draft: str | Path, drafts_dir: str | Path) -> RegistrationPlan:
     draft_path = Path(draft).resolve()
     drafts_path = Path(drafts_dir).resolve()
@@ -48,6 +104,7 @@ def plan_registration(draft: str | Path, drafts_dir: str | Path) -> Registration
 def apply_registration(plan: RegistrationPlan) -> dict[str, Any]:
     draft_path = Path(plan.draft)
     root_index = Path(plan.root_index)
+    rebased_files = _rebase_draft_documents(draft_path)
     timeline = draft_path / "draft_content.json"
     if not timeline.is_file():
         timeline = draft_path / "draft_info.json"
@@ -85,7 +142,12 @@ def apply_registration(plan: RegistrationPlan) -> dict[str, Any]:
     if metadata.exists():
         shutil.copy2(metadata, metadata.with_suffix(metadata.suffix + ".bak"))
     metadata.write_text(json.dumps(entry, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    return {"registered": True, "draft_id": identifier, "backup": str(root_index) + ".bak" if plan.action == "update" else None}
+    return {
+        "registered": True,
+        "draft_id": identifier,
+        "backup": str(root_index) + ".bak" if plan.action == "update" else None,
+        "rebased_files": rebased_files,
+    }
 
 
 def open_desktop(draft: str | Path, *, app: str = "CapCut") -> dict[str, str]:
