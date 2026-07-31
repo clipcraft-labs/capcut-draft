@@ -1,6 +1,7 @@
 """Compile Clipcraft Project data into a minimal CapCut Desktop draft."""
 
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -37,7 +38,7 @@ def compile_project(project: Project, output: str | Path, *, lock_path: str | Pa
     resources = load_lock(lock_path)
     materials = _materials()
     tracks: list[dict[str, Any]] = []
-    refs: dict[str, tuple[str, int, int]] = {}
+    refs: dict[str, tuple[dict[str, Any], dict[str, Any], int, int]] = {}
     duration_us = 0
 
     for source_track in project.data["tracks"]:
@@ -56,14 +57,21 @@ def compile_project(project: Project, output: str | Path, *, lock_path: str | Pa
                     raise ProjectError(f"Local asset does not exist: {source}")
                 asset_dir = out / "assets" / source_track["type"]
                 asset_dir.mkdir(parents=True, exist_ok=True)
-                destination = asset_dir / source.name
+                digest = hashlib.sha256(source.read_bytes()).hexdigest()
+                destination = asset_dir / f"{digest}{source.suffix.lower()}"
                 shutil.copy2(source, destination)
-                entry = {"id": material_id, "type": source_track["type"], "name": source.name, "path": str(destination)}
+                entry = {
+                    "id": material_id,
+                    "type": source_track["type"],
+                    "name": source.name,
+                    "path": str(destination),
+                    "content_hash": f"sha256:{digest}",
+                }
                 materials["videos" if source_track["type"] == "video" else "audios"].append(entry)
             segment = {"id": segment_id, "material_id": material_id, "target_timerange": {"start": start, "duration": duration}, "source_timerange": {"start": 0, "duration": duration}, "extra_material_refs": [], "render_index": 0}
             track["segments"].append(segment)
             if item.get("ref"):
-                refs[item["ref"]] = (segment_id, start, duration)
+                refs[item["ref"]] = (segment, materials["texts"][-1] if source_track["type"] == "text" else entry, start, duration)
             duration_us = max(duration_us, start + duration)
         tracks.append(track)
 
@@ -71,15 +79,44 @@ def compile_project(project: Project, output: str | Path, *, lock_path: str | Pa
         resource = resources.get(operation["resource"])
         if resource is None:
             raise ProjectError(f"Resource {operation['resource']!r} is not locked")
-        segment_id, start, duration = refs[operation["target"]]
+        target_segment, target_material, start, duration = refs[operation["target"]]
         material_id = _id()
         effect_segment_id = _id()
         resource_id = str(resource.get("resource_id") or resource.get("id") or "")
         effect_id = str(resource.get("effect_id") or resource_id)
         if not resource_id:
             raise ProjectError(f"Resource {operation['resource']!r} has no resource_id")
-        materials["video_effects"].append({"id": material_id, "type": "video_effect", "name": resource.get("name", operation["resource"]), "resource_id": resource_id, "effect_id": effect_id, "apply_target_type": 0, "bind_segment_id": segment_id, "source_platform": 1, "value": operation.get("intensity", 1.0)})
-        tracks.append({"id": _id(), "type": "effect", "name": "Effects", "segments": [{"id": effect_segment_id, "material_id": material_id, "target_timerange": {"start": start, "duration": duration}, "source_timerange": {"start": 0, "duration": duration}, "extra_material_refs": [], "render_index": 0}]})
+        kind = operation["type"]
+        if kind in {"effect", "filter"}:
+            materials["video_effects"].append({
+                "id": material_id,
+                "type": "filter" if kind == "filter" else "video_effect",
+                "name": resource.get("name", operation["resource"]),
+                "resource_id": resource_id,
+                "effect_id": effect_id,
+                "apply_target_type": 0,
+                "bind_segment_id": target_segment["id"],
+                "source_platform": 1,
+                "value": operation.get("intensity", 1.0),
+            })
+            tracks.append({"id": _id(), "type": kind, "name": "Filters" if kind == "filter" else "Effects", "segments": [{"id": effect_segment_id, "material_id": material_id, "target_timerange": {"start": start, "duration": duration}, "source_timerange": {"start": 0, "duration": duration}, "extra_material_refs": [], "render_index": 0}]})
+        elif kind == "transition":
+            transition_duration = round(float(operation.get("duration", min(duration / US, 0.5))) * US)
+            materials["transitions"].append({
+                "id": material_id,
+                "type": "transition",
+                "name": resource.get("name", operation["resource"]),
+                "resource_id": resource_id,
+                "effect_id": effect_id,
+                "duration": transition_duration,
+                "is_overlap": bool(resource.get("is_overlap", True)),
+            })
+            target_segment["extra_material_refs"].append(material_id)
+        else:
+            if target_material.get("type") != "text":
+                raise ProjectError("caption-template operations require a text target")
+            target_material["effect_id"] = effect_id
+            target_material["effect_resource_id"] = resource_id
 
     canvas = project.data["canvas"]
     draft = {"id": _id(), "name": project.name, "duration": duration_us, "fps": canvas["fps"], "canvas_config": {"width": canvas["width"], "height": canvas["height"], "ratio": canvas.get("ratio", "")}, "tracks": tracks, "materials": materials, "platform": {"app_source": "cc", "os": "mac", "app_version": ""}, "free_render_index_mode_on": False}

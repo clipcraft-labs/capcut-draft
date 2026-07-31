@@ -71,10 +71,14 @@ def validate_project(data: Any) -> None:
     if not isinstance(operations, list):
         raise ProjectError("operations must be an array")
     for index, operation in enumerate(operations):
-        if not isinstance(operation, dict) or operation.get("type") not in {"effect"}:
+        if not isinstance(operation, dict) or operation.get("type") not in {
+            "effect",
+            "filter",
+            "transition",
+            "caption-template",
+        }:
             raise ProjectError(f"operations[{index}].type is not supported")
         if operation.get("target") not in refs:
             raise ProjectError(f"operations[{index}].target does not match an item ref")
         if not isinstance(operation.get("resource"), str):
             raise ProjectError(f"operations[{index}].resource is required")
-
