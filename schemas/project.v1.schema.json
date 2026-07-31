@@ -35,7 +35,7 @@
         "type": "object",
         "required": ["type", "items"],
         "properties": {
-          "type": { "enum": ["video", "audio", "text"] },
+          "type": { "enum": ["video", "image", "audio", "text"] },
           "name": { "type": "string" },
           "items": {
             "type": "array",
@@ -78,4 +78,3 @@
   },
   "additionalProperties": false
 }
-

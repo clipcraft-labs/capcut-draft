@@ -105,17 +105,19 @@ def compile_project(
     duration_us = 0
 
     for source_track in project.data["tracks"]:
-        track = {"id": _id(), "type": source_track["type"], "name": source_track.get("name", ""), "is_default_name": True, "attribute": 0, "flag": 0, "segments": []}
+        source_type = source_track["type"]
+        track_type = "video" if source_type == "image" else source_type
+        track = {"id": _id(), "type": track_type, "name": source_track.get("name", ""), "is_default_name": True, "attribute": 0, "flag": 0, "segments": []}
         for item in source_track["items"]:
             material_id = _id()
             start = round(float(item["at"]) * US)
             duration = round(float(item["duration"]) * US)
             segment_id = _id()
-            if source_track["type"] == "text":
+            if source_type == "text":
                 content = json.dumps({"text": item["text"], "styles": []}, ensure_ascii=False, separators=(",", ":"))
                 materials["texts"].append({"id": material_id, "type": "text", "content": content, "font_size": item.get("fontSize", 15), "text_color": item.get("color", "#FFFFFF"), "alignment": 1, "background_alpha": 0.0, "background_color": "", "bold_width": 0.0, "border_width": 0.0, "check_flag": 15, "font_id": "", "font_name": "", "has_shadow": False, "italic_degree": 0, "letter_spacing": 0, "line_spacing": 0.02, "name": "", "recognize_type": 0, "shadow_alpha": 0.0, "text_alpha": 1.0, "text_size": 15, "underline": False})
             else:
-                asset_dir = out / "assets" / source_track["type"]
+                asset_dir = out / "assets" / source_type
                 if item.get("resource"):
                     locked = resources.get(item["resource"])
                     if locked is None or not locked.get("asset_hash"):
@@ -134,7 +136,7 @@ def compile_project(
                     display_name = source.name
                 entry = {
                     "id": material_id,
-                    "type": source_track["type"],
+                    "type": "photo" if source_type == "image" else source_type,
                     "name": display_name,
                     "material_id": material_id,
                     "local_material_id": "",
@@ -151,12 +153,13 @@ def compile_project(
                     "crop": {"upper_left_x": 0.0, "upper_left_y": 0.0, "upper_right_x": 1.0, "upper_right_y": 0.0, "lower_left_x": 0.0, "lower_left_y": 1.0, "lower_right_x": 1.0, "lower_right_y": 1.0},
                     "crop_ratio": "free", "crop_scale": 1.0,
                     "audio_fade": None, "remote_url": None,
+                    "has_audio": source_type == "video",
                 }
-                materials["videos" if source_track["type"] == "video" else "audios"].append(entry)
+                materials["videos" if source_type in {"video", "image"} else "audios"].append(entry)
             segment = {"id": segment_id, "material_id": material_id, "raw_segment_id": track["id"], "target_timerange": {"start": start, "duration": duration}, "source_timerange": {"start": 0, "duration": duration}, "speed": 1.0, "volume": 1.0, "visible": True, "reverse": False, "clip": _clip(), "uniform_scale": {"on": True, "value": 1.0}, "extra_material_refs": [], "common_keyframes": [], "keyframe_refs": [], "render_index": 0, "track_render_index": 0, "track_attribute": 0}
             track["segments"].append(segment)
             if item.get("ref"):
-                refs[item["ref"]] = (segment, materials["texts"][-1] if source_track["type"] == "text" else entry, start, duration)
+                refs[item["ref"]] = (segment, materials["texts"][-1] if source_type == "text" else entry, start, duration)
             duration_us = max(duration_us, start + duration)
         tracks.append(track)
 

@@ -113,3 +113,16 @@ class DraftTests(unittest.TestCase):
             result = compile_project(project, root / "allowed", allow_unsupported_version=True)
             draft = json.loads((result.output / "draft_content.json").read_text(encoding="utf-8"))
             self.assertEqual(draft["platform"]["app_version"], "10.0.0")
+
+    def test_still_image_compiles_as_photo_material(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "screen.png"
+            image.write_bytes(b"synthetic png bytes")
+            project_path = root / "project.json"
+            project_path.write_text(json.dumps({"version": 1, "canvas": {"width": 1080, "height": 1920, "fps": 30}, "tracks": [{"type": "image", "items": [{"src": "screen.png", "at": 0, "duration": 2, "ref": "screen"}]}]}), encoding="utf-8")
+            result = compile_project(load_project(project_path), root / "build")
+            draft = json.loads((result.output / "draft_content.json").read_text(encoding="utf-8"))
+            self.assertEqual(draft["tracks"][0]["type"], "video")
+            self.assertEqual(draft["materials"]["videos"][0]["type"], "photo")
+            self.assertFalse(draft["materials"]["videos"][0]["has_audio"])

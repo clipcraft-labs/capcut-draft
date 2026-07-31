@@ -45,9 +45,10 @@ Dynamic resources are stored in `clipcraft.lock`, not hard-coded into the
 project. The lock file is safe to commit only after reviewing its URLs and
 metadata; the compiler rejects secret-bearing URL query strings.
 
-Current operations include locked scene effects, filters, transitions, and
-caption templates. Local media is copied under a SHA-256 content-addressed
-filename so basename collisions cannot change a build.
+Current tracks include video, still images, audio, and text. Operations include
+locked scene effects, filters, transitions, and caption templates. Local media
+is copied under a SHA-256 content-addressed filename so basename collisions
+cannot change a build.
 
 Desktop registration is plan-first. Without `--apply`, the command only prints
 the files it would change. Applying registration preserves existing metadata

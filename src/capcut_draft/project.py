@@ -53,8 +53,8 @@ def validate_project(data: Any) -> None:
         raise ProjectError("tracks must be a non-empty array")
     refs: set[str] = set()
     for track_index, track in enumerate(tracks):
-        if not isinstance(track, dict) or track.get("type") not in {"video", "audio", "text"}:
-            raise ProjectError(f"tracks[{track_index}].type must be video, audio, or text")
+        if not isinstance(track, dict) or track.get("type") not in {"video", "image", "audio", "text"}:
+            raise ProjectError(f"tracks[{track_index}].type must be video, image, audio, or text")
         items = track.get("items")
         if not isinstance(items, list) or not items:
             raise ProjectError(f"tracks[{track_index}].items must be a non-empty array")
