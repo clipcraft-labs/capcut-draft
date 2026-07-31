@@ -20,6 +20,11 @@ def parser() -> argparse.ArgumentParser:
     build.add_argument("--out", type=Path, required=True)
     build.add_argument("--lock", type=Path)
     build.add_argument("--asset-store", type=Path)
+    build.add_argument(
+        "--allow-unsupported-version",
+        action="store_true",
+        help="Build for an unverified Desktop target after manual review",
+    )
     register = commands.add_parser("register", help="Plan or apply Desktop project registration")
     register.add_argument("draft", type=Path)
     register.add_argument("--drafts-dir", type=Path, required=True)
@@ -49,7 +54,13 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"ok": True, **open_desktop(args.draft, app=args.app)}, ensure_ascii=False))
         return 0
     project = load_project(args.project)
-    result = compile_project(project, args.out, lock_path=args.lock, asset_store=args.asset_store)
+    result = compile_project(
+        project,
+        args.out,
+        lock_path=args.lock,
+        asset_store=args.asset_store,
+        allow_unsupported_version=args.allow_unsupported_version,
+    )
     print(json.dumps({"ok": True, "output": str(result.output), "tracks": result.tracks, "segments": result.segments, "duration_us": result.duration_us}, ensure_ascii=False))
     return 0
 

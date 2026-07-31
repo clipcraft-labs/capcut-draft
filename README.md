@@ -58,3 +58,8 @@ timeline project index, timeline backup, project metadata, and auxiliary JSON
 files expected by the current macOS Desktop layout. Platform device, disk, and
 network identifiers are deliberately omitted and are never copied from a real
 Desktop project.
+
+The verified target is CapCut Desktop 9.1.0 on macOS. Other target versions or
+operating systems are rejected by default because draft layouts are
+version-specific. Use `--allow-unsupported-version` only after manually
+reviewing the generated files against that Desktop release.

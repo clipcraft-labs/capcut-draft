@@ -12,6 +12,7 @@ from uuid import uuid4
 from .lockfile import load_lock
 from .project import Project, ProjectError
 from .assets import AssetStore
+from .compatibility import require_verified_target
 
 US = 1_000_000
 
@@ -81,10 +82,21 @@ def _keyframes() -> dict[str, list[Any]]:
     return {name: [] for name in ("videos", "audios", "texts", "stickers", "filters", "adjusts", "handwrites", "effects")}
 
 
-def compile_project(project: Project, output: str | Path, *, lock_path: str | Path | None = None, asset_store: str | Path | None = None) -> BuildResult:
+def compile_project(
+    project: Project,
+    output: str | Path,
+    *,
+    lock_path: str | Path | None = None,
+    asset_store: str | Path | None = None,
+    allow_unsupported_version: bool = False,
+) -> BuildResult:
     out = Path(output).resolve()
     if out.exists():
         raise ProjectError(f"Output already exists: {out}")
+    target = project.data.get("target", {})
+    target_os, target_version = require_verified_target(
+        target, allow_unsupported=allow_unsupported_version
+    )
     resources = load_lock(lock_path)
     store = AssetStore(asset_store)
     materials = _materials()
@@ -198,10 +210,9 @@ def compile_project(project: Project, output: str | Path, *, lock_path: str | Pa
             target_material["effect_resource_id"] = resource_id
 
     canvas = project.data["canvas"]
-    target = project.data.get("target", {})
     draft_id = _id()
     now_us = int(time.time() * US)
-    platform = {"app_source": "cc", "os": target.get("os", "mac"), "os_version": "", "app_id": 359289, "app_version": target.get("version", "9.1.0") or "9.1.0"}
+    platform = {"app_source": "cc", "os": target_os, "os_version": "", "app_id": 359289, "app_version": target_version}
     draft = {
         "id": draft_id, "version": 360000, "new_version": "179.0.0",
         "name": project.name, "duration": duration_us,

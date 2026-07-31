@@ -101,3 +101,15 @@ class DraftTests(unittest.TestCase):
             material = draft["materials"]["audios"][0]
             self.assertEqual(material["content_hash"], f"sha256:{stored.digest}")
             self.assertTrue(Path(material["path"]).is_file())
+
+    def test_rejects_unverified_target_without_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project_path = root / "project.json"
+            project_path.write_text(json.dumps({"version": 1, "target": {"app": "capcut", "version": "10.0.0", "os": "mac"}, "canvas": {"width": 1, "height": 1, "fps": 1}, "tracks": [{"type": "text", "items": [{"text": "hello", "at": 0, "duration": 1}]}]}), encoding="utf-8")
+            project = load_project(project_path)
+            with self.assertRaises(ProjectError):
+                compile_project(project, root / "rejected")
+            result = compile_project(project, root / "allowed", allow_unsupported_version=True)
+            draft = json.loads((result.output / "draft_content.json").read_text(encoding="utf-8"))
+            self.assertEqual(draft["platform"]["app_version"], "10.0.0")
