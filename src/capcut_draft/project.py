@@ -48,6 +48,28 @@ def validate_project(data: Any) -> None:
         raise ProjectError("target.app must be capcut")
     if target.get("os", "mac") not in {"mac", "windows"}:
         raise ProjectError("target.os must be mac or windows")
+    resources = data.get("resources", {})
+    if not isinstance(resources, dict):
+        raise ProjectError("resources must be an object")
+    resource_kinds = {
+        "auto", "effect", "filter", "transition", "caption-template",
+        "body-effect", "sticker", "animation", "text-animation",
+        "audio-effect", "font", "text-effect", "mask", "image",
+        "stock-video", "material",
+    }
+    for key, resource in resources.items():
+        where = f"resources[{key!r}]"
+        if not isinstance(key, str) or not key:
+            raise ProjectError("resource keys must be non-empty strings")
+        if not isinstance(resource, dict):
+            raise ProjectError(f"{where} must be an object")
+        identifier = resource.get("id")
+        if not isinstance(identifier, str) or not identifier.isdigit():
+            raise ProjectError(f"{where}.id must be a numeric CapCut ID string")
+        if resource.get("provider", "capcut") != "capcut":
+            raise ProjectError(f"{where}.provider must be capcut")
+        if resource.get("kind", "auto") not in resource_kinds:
+            raise ProjectError(f"{where}.kind is not supported")
     tracks = data.get("tracks")
     if not isinstance(tracks, list) or not tracks:
         raise ProjectError("tracks must be a non-empty array")
@@ -99,3 +121,8 @@ def validate_project(data: Any) -> None:
             raise ProjectError(f"operations[{index}].target does not match an item ref")
         if not isinstance(operation.get("resource"), str):
             raise ProjectError(f"operations[{index}].resource is required")
+        resource_key = operation["resource"]
+        if resources and resource_key not in resources:
+            raise ProjectError(
+                f"operations[{index}].resource {resource_key!r} is not declared in resources"
+            )

@@ -49,8 +49,10 @@ and `draft_info.json` files are disposable build artifacts.
 }
 ```
 
-Dynamic resources are stored in `clipcraft.lock`, not hard-coded into the
-project. The lock file is safe to commit only after reviewing its URLs and
+Project JSON may declare dynamic resources as readable keys plus exact CapCut
+IDs. `clipcraft project render` turns those declarations into a managed
+`clipcraft.lock`; callers do not need a separate resolve step. The generated
+lock file is safe to commit only after reviewing its URLs and
 metadata; the compiler rejects secret-bearing URL query strings.
 
 Each build also writes `clipcraft_build.json`. This provenance manifest keeps

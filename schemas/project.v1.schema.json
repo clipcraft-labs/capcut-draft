@@ -28,6 +28,20 @@
       },
       "additionalProperties": false
     },
+    "resources": {
+      "type": "object",
+      "description": "CapCut catalogue IDs resolved automatically by clipcraft project render.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[0-9]+$" },
+          "provider": { "const": "capcut" },
+          "kind": { "enum": ["auto", "effect", "filter", "transition", "caption-template", "body-effect", "sticker", "animation", "text-animation", "audio-effect", "font", "text-effect", "mask", "image", "stock-video", "material"] }
+        },
+        "additionalProperties": false
+      }
+    },
     "tracks": {
       "type": "array",
       "minItems": 1,
