@@ -51,7 +51,30 @@
                 "duration": { "type": "number", "exclusiveMinimum": 0 },
                 "ref": { "type": "string" },
                 "fontSize": { "type": "number" },
-                "color": { "type": "string" }
+                "color": { "type": "string" },
+                "fit": { "enum": ["contain", "cover"] },
+                "scale": { "type": "number", "exclusiveMinimum": 0 },
+                "alpha": { "type": "number", "minimum": 0, "maximum": 1 },
+                "volume": { "type": "number", "minimum": 0 },
+                "renderIndex": { "type": "integer" },
+                "position": {
+                  "type": "object",
+                  "properties": {
+                    "x": { "type": "number" },
+                    "y": { "type": "number" }
+                  },
+                  "additionalProperties": false
+                },
+                "fontFamily": { "type": "string" },
+                "alignment": { "type": "integer" },
+                "backgroundColor": { "type": "string" },
+                "backgroundAlpha": { "type": "number", "minimum": 0, "maximum": 1 },
+                "borderColor": { "type": "string" },
+                "borderWidth": { "type": "number", "minimum": 0 },
+                "boldWidth": { "type": "number", "minimum": 0 },
+                "shadowAlpha": { "type": "number", "minimum": 0, "maximum": 1 },
+                "letterSpacing": { "type": "number" },
+                "lineSpacing": { "type": "number" }
               },
               "additionalProperties": true
             }
@@ -66,11 +89,34 @@
         "type": "object",
         "required": ["type", "target", "resource"],
         "properties": {
-          "type": { "enum": ["effect", "filter", "transition", "caption-template"] },
+          "type": { "enum": ["effect", "filter", "transition", "caption-template", "body-effect", "sticker", "animation", "text-animation", "audio-effect", "font", "text-effect", "mask"] },
           "target": { "type": "string" },
           "resource": { "type": "string" },
           "duration": { "type": "number", "exclusiveMinimum": 0 },
-          "intensity": { "type": "number", "minimum": 0, "maximum": 1 }
+          "intensity": { "type": "number", "minimum": 0, "maximum": 1 },
+          "scale": { "type": "number", "exclusiveMinimum": 0 },
+          "alpha": { "type": "number", "minimum": 0, "maximum": 1 },
+          "renderIndex": { "type": "integer" },
+          "animationType": { "enum": ["in", "out", "group", "loop"] },
+          "start": { "type": "number", "minimum": 0 },
+          "centerX": { "type": "number" },
+          "centerY": { "type": "number" },
+          "width": { "type": "number", "exclusiveMinimum": 0 },
+          "height": { "type": "number", "exclusiveMinimum": 0 },
+          "aspectRatio": { "type": "number", "exclusiveMinimum": 0 },
+          "rotation": { "type": "number" },
+          "invert": { "type": "boolean" },
+          "feather": { "type": "number", "minimum": 0, "maximum": 1 },
+          "roundCorner": { "type": "number", "minimum": 0, "maximum": 1 },
+          "resourceType": { "type": "string" },
+          "position": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" }
+            },
+            "additionalProperties": false
+          }
         },
         "additionalProperties": false
       }

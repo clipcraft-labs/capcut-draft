@@ -85,6 +85,14 @@ def validate_project(data: Any) -> None:
             "filter",
             "transition",
             "caption-template",
+            "body-effect",
+            "sticker",
+            "animation",
+            "text-animation",
+            "audio-effect",
+            "font",
+            "text-effect",
+            "mask",
         }:
             raise ProjectError(f"operations[{index}].type is not supported")
         if operation.get("target") not in refs:

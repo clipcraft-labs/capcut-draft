@@ -4,6 +4,11 @@ Independent compiler from vendor-neutral Clipcraft Project JSON to CapCut
 Desktop draft files. This project is unofficial and is not affiliated with or
 endorsed by CapCut or ByteDance.
 
+The public package contains only the independent JSON compiler, packager,
+validator, and Desktop registration adapter. It does not contain CapCut,
+VEHelper, provider frameworks, downloaded bundles, models, fonts, or catalogue
+media.
+
 ## Quick start
 
 ```bash
@@ -13,6 +18,9 @@ clipcraft-draft build examples/project.json --out examples/build/demo
 clipcraft-draft register examples/build/demo --drafts-dir /path/to/Desktop/drafts
 clipcraft-draft register examples/build/demo --drafts-dir /path/to/Desktop/drafts --apply
 clipcraft-draft open examples/build/demo
+clipcraft-draft package /path/to/CapCut/Draft --out build/render-package \
+  --lock clipcraft.lock --resource RESOURCE_ID=/path/to/unpacked/resource
+clipcraft-draft render-preflight build/render-package
 ```
 
 The source project remains the source of truth. Generated `draft_content.json`
@@ -53,17 +61,40 @@ the identifiers needed by Desktop; the manifest retains provider metadata that
 does not have a stable native field. Content-addressed music additionally keeps
 its catalogue ID alongside the local audio material.
 
-Local images, video, and resolved audio are embedded under the build's
-`assets/` directory. Catalogue effects, filters, transitions, and caption
-templates are reproducible references, not archived vendor bundles: their
-exact IDs and category provenance are preserved, and CapCut Desktop resolves
-the corresponding package when the draft is opened. Those resource types are
-therefore not guaranteed to work fully offline.
+Local or catalogue-resolved images, video, and audio are embedded under the
+build's `assets/` directory. Catalogue effects, filters, transitions, caption
+templates, body/face effects, stickers, video/text animations, audio effects,
+fonts, text effects, and masks are emitted as ID-only reproducible references
+during compilation. The `package` or integrated `project render` stage resolves
+those IDs and embeds their vendor bundles for offline export.
+
+The `package` command converts an existing Desktop draft into a self-contained
+render package. It searches every installed CapCut cache category (not only
+effects), resolves nested records and JSON-encoded `sdk_extra`, recursively
+copies declared dependencies, embeds application fonts and other absolute-path
+assets, and synchronizes the Desktop timeline mirrors. Missing resources may be
+supplied as `ID=PATH` or downloaded from a version-1 lock record containing
+`download_url` and optional `file_md5`. Downloads are hash-checked and archives
+are extracted with path traversal protection.
+
+`render-preflight` rejects unresolved placeholders, missing or external paths,
+and modified resource trees. A successful preflight means the draft directory
+is resource-complete; it does not itself invoke CapCut's private VEHelper export
+service.
+
+The unified `clipcraft project render` command can invoke a separately supplied
+native runner after preflight. The runner is not distributed by this package;
+see the public
+[headless rendering guide](https://clipcraft-labs.docs.buildwithfern.com/headless-rendering).
 
 Current tracks include video, still images, audio, and text. Operations include
-locked scene effects, filters, transitions, and caption templates. Local media
-is copied under a SHA-256 content-addressed filename so basename collisions
-cannot change a build.
+locked scene effects, filters, transitions, caption templates, body effects,
+stickers, animations, text animations, audio effects, fonts, text effects, and
+masks. Sticker operations accept `scale`, `alpha`, `position`, and
+`renderIndex`; animation and mask operations accept their native timing and
+geometry controls. Their base time range is inherited from the target. Local
+media is copied under a SHA-256 content-addressed filename so basename
+collisions cannot change a build.
 
 Desktop registration is plan-first. Without `--apply`, the command only prints
 the files it would change. Applying registration preserves existing metadata
@@ -85,3 +116,11 @@ The verified target is CapCut Desktop 9.1.0 on macOS. Other target versions or
 operating systems are rejected by default because draft layouts are
 version-specific. Use `--allow-unsupported-version` only after manually
 reviewing the generated files against that Desktop release.
+
+## Public repository safety
+
+Generated drafts and packages can contain absolute paths, copied source media,
+and downloaded proprietary resources. Do not commit them. Publish only Project
+JSON, sanitized lock metadata, and source media you are licensed to distribute.
+Never publish provider binaries, Desktop indexes, raw responses, signed URLs,
+profiles, cookies, request signatures, or device/account identifiers.

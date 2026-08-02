@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import struct
 import time
 from typing import Any
 from uuid import uuid4
@@ -50,13 +51,13 @@ def _materials() -> dict[str, list[dict[str, Any]]]:
     return {name: [] for name in names}
 
 
-def _clip() -> dict[str, Any]:
+def _clip(*, alpha: float = 1.0, scale: float = 1.0, x: float = 0.0, y: float = 0.0) -> dict[str, Any]:
     return {
-        "alpha": 1.0,
+        "alpha": alpha,
         "flip": {"horizontal": False, "vertical": False},
         "rotation": 0.0,
-        "scale": {"x": 1.0, "y": 1.0},
-        "transform": {"x": 0.0, "y": 0.0},
+        "scale": {"x": scale, "y": scale},
+        "transform": {"x": x, "y": y},
     }
 
 
@@ -104,6 +105,40 @@ def _catalog_identity(resource: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _image_dimensions(path: Path) -> tuple[int, int] | None:
+    data = path.read_bytes()
+    if data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) >= 24:
+        return struct.unpack(">II", data[16:24])
+    if not data.startswith(b"\xff\xd8"):
+        return None
+    offset = 2
+    sof_markers = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+    while offset + 4 <= len(data):
+        if data[offset] != 0xFF:
+            offset += 1
+            continue
+        marker = data[offset + 1]
+        offset += 2
+        if marker in {0xD8, 0xD9}:
+            continue
+        if offset + 2 > len(data):
+            break
+        length = struct.unpack(">H", data[offset:offset + 2])[0]
+        if length < 2 or offset + length > len(data):
+            break
+        if marker in sof_markers and length >= 7:
+            height, width = struct.unpack(">HH", data[offset + 3:offset + 7])
+            return width, height
+        offset += length
+    return None
+
+
+def _cover_scale(media_width: int, media_height: int, canvas_width: int, canvas_height: int) -> float:
+    contain = min(canvas_width / media_width, canvas_height / media_height)
+    cover = max(canvas_width / media_width, canvas_height / media_height)
+    return cover / contain
+
+
 def compile_project(
     project: Project,
     output: str | Path,
@@ -138,7 +173,7 @@ def compile_project(
             segment_id = _id()
             if source_type == "text":
                 content = json.dumps({"text": item["text"], "styles": []}, ensure_ascii=False, separators=(",", ":"))
-                materials["texts"].append({"id": material_id, "type": "text", "content": content, "font_size": item.get("fontSize", 15), "text_color": item.get("color", "#FFFFFF"), "alignment": 1, "background_alpha": 0.0, "background_color": "", "bold_width": 0.0, "border_width": 0.0, "check_flag": 15, "font_id": "", "font_name": "", "has_shadow": False, "italic_degree": 0, "letter_spacing": 0, "line_spacing": 0.02, "name": "", "recognize_type": 0, "shadow_alpha": 0.0, "text_alpha": 1.0, "text_size": 15, "underline": False})
+                materials["texts"].append({"id": material_id, "type": "text", "content": content, "font_size": item.get("fontSize", 15), "text_color": item.get("color", "#FFFFFF"), "alignment": item.get("alignment", 1), "background_alpha": item.get("backgroundAlpha", 0.0), "background_color": item.get("backgroundColor", ""), "bold_width": item.get("boldWidth", 0.0), "border_color": item.get("borderColor", "#000000"), "border_width": item.get("borderWidth", 0.0), "check_flag": 15, "font_id": "", "font_name": item.get("fontFamily", ""), "has_shadow": item.get("shadowAlpha", 0.0) > 0, "italic_degree": 0, "letter_spacing": item.get("letterSpacing", 0), "line_spacing": item.get("lineSpacing", 0.02), "name": "", "recognize_type": 0, "shadow_alpha": item.get("shadowAlpha", 0.0), "text_alpha": item.get("alpha", 1.0), "text_size": item.get("fontSize", 15), "underline": False})
             else:
                 asset_dir = out / "assets" / source_type
                 if item.get("resource"):
@@ -164,6 +199,13 @@ def compile_project(
                     shutil.copy2(source, destination)
                     display_name = source.name
                     identity = None
+                canvas_width = int(project.data["canvas"]["width"])
+                canvas_height = int(project.data["canvas"]["height"])
+                media_width, media_height = (
+                    _image_dimensions(destination) or (canvas_width, canvas_height)
+                    if source_type == "image"
+                    else (canvas_width, canvas_height)
+                )
                 entry = {
                     "id": material_id,
                     "type": "photo" if source_type == "image" else source_type,
@@ -175,8 +217,8 @@ def compile_project(
                     "media_path": "",
                     "content_hash": f"sha256:{digest}",
                     "duration": duration,
-                    "width": int(project.data["canvas"]["width"]),
-                    "height": int(project.data["canvas"]["height"]),
+                    "width": media_width,
+                    "height": media_height,
                     "category_id": "",
                     "category_name": "local",
                     "check_flag": 63487,
@@ -195,7 +237,11 @@ def compile_project(
                     if identity["kind"] == "music":
                         entry["music_id"] = identity["id"]
                 materials["videos" if source_type in {"video", "image"} else "audios"].append(entry)
-            segment = {"id": segment_id, "material_id": material_id, "raw_segment_id": track["id"], "target_timerange": {"start": start, "duration": duration}, "source_timerange": {"start": 0, "duration": duration}, "speed": 1.0, "volume": 1.0, "visible": True, "reverse": False, "clip": _clip(), "uniform_scale": {"on": True, "value": 1.0}, "extra_material_refs": [], "common_keyframes": [], "keyframe_refs": [], "render_index": 0, "track_render_index": 0, "track_attribute": 0}
+            position = item.get("position") if isinstance(item.get("position"), dict) else {}
+            clip_scale = float(item.get("scale", 1.0))
+            if source_type == "image" and item.get("fit") == "cover":
+                clip_scale *= _cover_scale(entry["width"], entry["height"], int(project.data["canvas"]["width"]), int(project.data["canvas"]["height"]))
+            segment = {"id": segment_id, "material_id": material_id, "raw_segment_id": track["id"], "target_timerange": {"start": start, "duration": duration}, "source_timerange": {"start": 0, "duration": duration}, "speed": 1.0, "volume": item.get("volume", 1.0), "visible": True, "reverse": False, "clip": _clip(alpha=float(item.get("alpha", 1.0)), scale=clip_scale, x=float(position.get("x", 0.0)), y=float(position.get("y", 0.0))), "uniform_scale": {"on": True, "value": clip_scale}, "extra_material_refs": [], "common_keyframes": [], "keyframe_refs": [], "render_index": int(item.get("renderIndex", 0)), "track_render_index": int(item.get("renderIndex", 0)), "track_attribute": 0}
             track["segments"].append(segment)
             if item.get("ref"):
                 refs[item["ref"]] = (segment, materials["texts"][-1] if source_type == "text" else entry, start, duration)
@@ -220,15 +266,16 @@ def compile_project(
             "target": operation["target"],
         })
         category = resource.get("category") if isinstance(resource.get("category"), dict) else {}
-        if kind in {"effect", "filter"}:
+        metadata = resource.get("metadata") if isinstance(resource.get("metadata"), dict) else {}
+        if kind in {"effect", "filter", "body-effect"}:
             materials["video_effects"].append({
                 "id": material_id,
                 "type": "filter" if kind == "filter" else "video_effect",
                 "name": resource.get("name", operation["resource"]),
                 "resource_id": resource_id,
                 "effect_id": effect_id,
-                "apply_target_type": 0,
-                "bind_segment_id": target_segment["id"],
+                "apply_target_type": 2 if kind == "body-effect" else 0,
+                "bind_segment_id": "" if kind == "body-effect" else target_segment["id"],
                 "source_platform": 1,
                 "value": operation.get("intensity", 1.0),
                 "adjust_params": [], "apply_time_range": None,
@@ -240,7 +287,7 @@ def compile_project(
                 "track_render_index": 0, "version": "",
             })
             effect_track_id = _id()
-            tracks.append({"id": effect_track_id, "type": kind, "name": "Filters" if kind == "filter" else "Effects", "is_default_name": True, "attribute": 0, "flag": 0, "segments": [{"id": effect_segment_id, "material_id": material_id, "raw_segment_id": effect_track_id, "target_timerange": {"start": start, "duration": duration}, "source_timerange": {"start": 0, "duration": duration}, "speed": 1.0, "volume": 1.0, "visible": True, "reverse": False, "extra_material_refs": [], "common_keyframes": [], "keyframe_refs": [], "render_index": 0, "track_render_index": 0, "track_attribute": 0}]})
+            tracks.append({"id": effect_track_id, "type": "effect" if kind == "body-effect" else kind, "name": "Filters" if kind == "filter" else "Effects", "is_default_name": True, "attribute": 0, "flag": 0, "segments": [{"id": effect_segment_id, "material_id": material_id, "raw_segment_id": effect_track_id, "target_timerange": {"start": start, "duration": duration}, "source_timerange": {"start": 0, "duration": duration}, "speed": 1.0, "volume": 1.0, "visible": True, "reverse": False, "extra_material_refs": [], "common_keyframes": [], "keyframe_refs": [], "render_index": 0, "track_render_index": 0, "track_attribute": 0}]})
         elif kind == "transition":
             transition_duration = round(float(operation.get("duration", min(duration / US, 0.5))) * US)
             materials["transitions"].append({
@@ -255,12 +302,200 @@ def compile_project(
                 "category_name": str(category.get("name") or ""),
             })
             target_segment["extra_material_refs"].append(material_id)
-        else:
+        elif kind == "caption-template":
             if target_material.get("type") != "text":
                 raise ProjectError("caption-template operations require a text target")
             target_material["effect_id"] = effect_id
             target_material["effect_resource_id"] = resource_id
             target_material["effect_category_id"] = str(category.get("id") or "")
+        elif kind in {"animation", "text-animation"}:
+            is_text = target_material.get("type") == "text"
+            if kind == "text-animation" and not is_text:
+                raise ProjectError("text-animation operations require a text target")
+            if kind == "animation" and target_material.get("type") not in {"photo", "video"}:
+                raise ProjectError("animation operations require an image or video target")
+            animation_type = operation.get("animationType") or metadata.get("animation_type") or ("loop" if is_text else "group")
+            allowed = {"in", "out", "loop"} if is_text else {"in", "out", "group"}
+            if animation_type not in allowed:
+                raise ProjectError(f"{kind} does not support animationType {animation_type!r}")
+            animation_duration = min(duration, round(float(operation.get("duration", duration / US)) * US))
+            animation_start = round(float(operation.get("start", 0)) * US)
+            if animation_type == "out" and "start" not in operation:
+                animation_start = duration - animation_duration
+            if animation_start + animation_duration > duration:
+                raise ProjectError("animation range exceeds its target segment")
+            materials["material_animations"].append({
+                "id": material_id,
+                "type": "sticker_animation",
+                "multi_language_current": "none",
+                "animations": [{
+                    "anim_adjust_params": None,
+                    "platform": "all",
+                    "panel": "" if is_text else "video",
+                    "material_type": "sticker" if is_text else "video",
+                    "name": resource.get("name", operation["resource"]),
+                    "id": effect_id,
+                    "type": animation_type,
+                    "resource_id": resource_id,
+                    "start": animation_start,
+                    "duration": animation_duration,
+                }],
+            })
+            target_segment["extra_material_refs"].append(material_id)
+        elif kind == "audio-effect":
+            if target_material.get("type") != "audio":
+                raise ProjectError("audio-effect operations require an audio target")
+            materials["audio_effects"].append({
+                "audio_adjust_params": resource.get("audio_adjust_params", []),
+                "category_id": str(resource.get("audio_category_id") or "sound_effect"),
+                "category_name": str(resource.get("audio_category_name") or "Scene effect"),
+                "id": material_id,
+                "is_ugc": False,
+                "name": resource.get("name", operation["resource"]),
+                "production_path": "",
+                "resource_id": resource_id,
+                "speaker_id": "",
+                "sub_type": int(resource.get("audio_sub_type", 1)),
+                "time_range": {"duration": 0, "start": 0},
+                "type": "audio_effect",
+            })
+            target_segment["extra_material_refs"].append(material_id)
+        elif kind == "font":
+            if target_material.get("type") != "text":
+                raise ProjectError("font operations require a text target")
+            content = json.loads(target_material["content"])
+            if not content.get("styles"):
+                content["styles"] = [{"range": [0, len(content.get("text", ""))]}]
+            content["styles"][0]["font"] = {
+                "id": resource_id,
+                "resource_id": resource_id,
+                "path": f"##_material_placeholder_{resource_id}_##",
+            }
+            target_material["content"] = json.dumps(content, ensure_ascii=False, separators=(",", ":"))
+            target_material["font_id"] = resource_id
+            target_material["font_name"] = resource.get("name", operation["resource"])
+        elif kind == "text-effect":
+            if target_material.get("type") != "text":
+                raise ProjectError("text-effect operations require a text target")
+            materials["effects"].append({
+                "apply_target_type": 0,
+                "effect_id": effect_id,
+                "id": material_id,
+                "resource_id": resource_id,
+                "source_platform": 1,
+                "type": "text_effect",
+                "value": float(operation.get("intensity", 1.0)),
+            })
+            content = json.loads(target_material["content"])
+            if not content.get("styles"):
+                content["styles"] = [{"range": [0, len(content.get("text", ""))]}]
+            content["styles"][0]["effectStyle"] = {
+                "id": effect_id,
+                "resource_id": resource_id,
+                "path": f"##_material_placeholder_{resource_id}_##",
+            }
+            target_material["content"] = json.dumps(content, ensure_ascii=False, separators=(",", ":"))
+            target_segment["extra_material_refs"].append(material_id)
+        elif kind == "mask":
+            if target_material.get("type") not in {"photo", "video"}:
+                raise ProjectError("mask operations require an image or video target")
+            width = float(operation.get("width", 1.0))
+            height = float(operation.get("height", 1.0))
+            materials["common_mask"].append({
+                "config": {
+                    "aspectRatio": float(operation.get("aspectRatio", width / height)),
+                    "centerX": float(operation.get("centerX", 0.0)),
+                    "centerY": float(operation.get("centerY", 0.0)),
+                    "feather": float(operation.get("feather", 0.0)),
+                    "height": height,
+                    "invert": bool(operation.get("invert", False)),
+                    "rotation": float(operation.get("rotation", 0.0)),
+                    "roundCorner": float(operation.get("roundCorner", 0.0)),
+                    "width": width,
+                },
+                "id": material_id,
+                "name": resource.get("name", operation["resource"]),
+                "platform": "all",
+                "position_info": "",
+                "resource_type": str(operation.get("resourceType") or metadata.get("resource_type") or resource.get("resource_type") or "mask"),
+                "resource_id": resource_id,
+                "type": "mask",
+            })
+            target_segment["extra_material_refs"].append(material_id)
+        elif kind == "sticker":
+            position = operation.get("position") if isinstance(operation.get("position"), dict) else {}
+            scale = float(operation.get("scale", 1.0))
+            sticker_track_id = _id()
+            materials["stickers"].append({
+                "id": material_id,
+                "unique_id": "",
+                "type": "sticker",
+                "sticker_id": resource_id,
+                "resource_id": resource_id,
+                "name": resource.get("name", operation["resource"]),
+                "category_id": str(category.get("id") or ""),
+                "category_name": str(category.get("name") or ""),
+                "platform": "all",
+                "unicode": "",
+                "source_platform": 1,
+                "formula_id": "",
+                "check_flag": 1,
+                "team_id": "",
+                "request_id": "",
+                "combo_info": {"text_templates": []},
+                "sub_type": 0,
+                "radius": {"top_left": 0.0, "top_right": 0.0, "bottom_left": 0.0, "bottom_right": 0.0},
+                "global_alpha": float(operation.get("alpha", 1.0)),
+                "background_color": "",
+                "background_alpha": 1.0,
+                "border_line_style": 0,
+                "border_width": 0.0,
+                "border_color": "",
+                "has_shadow": False,
+                "shadow_color": "",
+                "shadow_alpha": 0.8,
+                "shadow_smoothing": 0.0,
+                "shadow_distance": 0.0,
+                "shadow_point": {"x": 0.0, "y": 0.0},
+                "shadow_angle": 0.0,
+                "shape_param": {"shape_type": 0, "roundness": [], "custom_points": [], "shape_size": []},
+                "original_size": [],
+                "update_params": "",
+                "aigc_type": "none",
+                "sequence_type": False,
+                "cycle_setting": True,
+                "multi_language_current": "none",
+                "corner_pin": None,
+            })
+            tracks.append({
+                "id": sticker_track_id,
+                "type": "sticker",
+                "name": "Stickers",
+                "is_default_name": True,
+                "attribute": 0,
+                "flag": 0,
+                "segments": [{
+                    "id": effect_segment_id,
+                    "material_id": material_id,
+                    "raw_segment_id": sticker_track_id,
+                    "target_timerange": {"start": start, "duration": duration},
+                    "source_timerange": None,
+                    "speed": 1.0,
+                    "volume": 1.0,
+                    "visible": True,
+                    "reverse": False,
+                    "clip": _clip(alpha=float(operation.get("alpha", 1.0)), scale=scale, x=float(position.get("x", 0.0)), y=float(position.get("y", 0.0))),
+                    "uniform_scale": {"on": True, "value": scale},
+                    "extra_material_refs": [],
+                    "common_keyframes": [],
+                    "keyframe_refs": [],
+                    "render_index": int(operation.get("renderIndex", 14000)),
+                    "track_render_index": 0,
+                    "track_attribute": 0,
+                }],
+            })
+        else:
+            raise ProjectError(f"Unsupported operation type: {kind}")
 
     canvas = project.data["canvas"]
     draft_id = _id()

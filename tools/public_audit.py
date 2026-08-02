@@ -6,18 +6,26 @@ from pathlib import Path
 
 SKIP = {".git", ".venv", "build", "dist", "__pycache__"}
 SUFFIXES = {".py", ".md", ".yaml", ".yml", ".toml", ".json", ".txt"}
+PROHIBITED_SUFFIXES = {".dylib", ".dll", ".so", ".model", ".mp4", ".mov", ".m4a", ".mp3", ".zip", ".db", ".sqlite"}
 PATTERNS = (
     re.compile(r"/Users/[^/\s]+"),
     re.compile(r"/home/[^/\s]+"),
+    re.compile(r"(?i)[A-Z]:\\Users\\[^\\\s]+"),
     re.compile(r"\b(?:Authorization|Cookie)\s*:\s*\S+"),
     re.compile(r"(?i)\b(?:access_token|api[_-]?key)\s*[=:]\s*[^\s<]"),
+    re.compile(r"(?i)[?&](?:x-signature|x-expires|signature|session_token|access_token)="),
 )
 
 
 def main() -> int:
     findings: list[str] = []
     for path in Path(".").rglob("*"):
-        if not path.is_file() or set(path.parts) & SKIP or path.suffix.lower() not in SUFFIXES:
+        if not path.is_file() or set(path.parts) & SKIP:
+            continue
+        if path.suffix.lower() in PROHIBITED_SUFFIXES:
+            findings.append(str(path))
+            continue
+        if path.suffix.lower() not in SUFFIXES:
             continue
         try:
             text = path.read_text(encoding="utf-8")

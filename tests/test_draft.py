@@ -15,13 +15,16 @@ class DraftTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             project_path = root / "project.json"
-            project_path.write_text(json.dumps({"version": 1, "name": "Synthetic", "canvas": {"width": 1080, "height": 1920, "fps": 30}, "tracks": [{"type": "text", "items": [{"text": "hello", "at": 0, "duration": 2, "ref": "title"}]}], "operations": []}), encoding="utf-8")
+            project_path.write_text(json.dumps({"version": 1, "name": "Synthetic", "canvas": {"width": 1080, "height": 1920, "fps": 30}, "tracks": [{"type": "text", "items": [{"text": "hello", "at": 0, "duration": 2, "ref": "title", "fontSize": 10, "position": {"x": 0.1, "y": -0.7}, "backgroundColor": "#101828", "backgroundAlpha": 0.8}]}], "operations": []}), encoding="utf-8")
             result = compile_project(load_project(project_path), root / "build")
             self.assertEqual((result.tracks, result.segments, result.duration_us), (1, 1, 2_000_000))
             self.assertEqual(validate_draft(result.output)["materials"], 1)
             draft = json.loads((result.output / "draft_info.json").read_text(encoding="utf-8"))
             self.assertEqual((draft["version"], draft["new_version"]), (360000, "179.0.0"))
             self.assertEqual(draft["platform"]["app_version"], "9.1.0")
+            self.assertEqual(draft["materials"]["texts"][0]["font_size"], 10)
+            self.assertEqual(draft["materials"]["texts"][0]["background_alpha"], 0.8)
+            self.assertEqual(draft["tracks"][0]["segments"][0]["clip"]["transform"], {"x": 0.1, "y": -0.7})
             project = json.loads((result.output / "Timelines" / "project.json").read_text(encoding="utf-8"))
             timeline = result.output / "Timelines" / project["main_timeline_id"] / "draft_info.json"
             self.assertTrue(timeline.is_file())
@@ -57,6 +60,77 @@ class DraftTests(unittest.TestCase):
             self.assertEqual(manifest["resources"]["caption"]["category"]["panel"], "caption-panel")
             self.assertEqual([use["resource"] for use in manifest["uses"]], ["filter", "transition", "caption"])
             self.assertEqual(validate_draft(result.output)["materials"], 3)
+
+    def test_locked_body_effect_and_sticker_compile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project_path = root / "project.json"
+            project_path.write_text(json.dumps({"version": 1, "name": "Synthetic", "canvas": {"width": 1080, "height": 1920, "fps": 30}, "tracks": [{"type": "text", "items": [{"text": "hello", "at": 0, "duration": 1, "ref": "title"}]}], "operations": [{"type": "body-effect", "target": "title", "resource": "face"}, {"type": "sticker", "target": "title", "resource": "sticker", "scale": 0.5, "position": {"x": 0.6, "y": -0.5}, "renderIndex": 14007}]}), encoding="utf-8")
+            lock = root / "clipcraft.lock"
+            lock.write_text(json.dumps({"version": 1, "resources": {"face": {"provider": "capcut", "kind": "body-effect", "name": "Face", "resource_id": "7399482664274742534", "effect_id": "7399482664274742534", "category": {"panel": "face-prop", "id": "22295", "key": "hot"}}, "sticker": {"provider": "capcut", "kind": "material", "name": "Sticker", "resource_id": "7237287015903972613", "effect_id": "7237287015903972613", "category": {"panel": "default", "id": "1003", "key": "1003"}}}}), encoding="utf-8")
+            result = compile_project(load_project(project_path), root / "build", lock_path=lock)
+            draft = json.loads((result.output / "draft_content.json").read_text(encoding="utf-8"))
+            body = draft["materials"]["video_effects"][0]
+            self.assertEqual((body["apply_target_type"], body["bind_segment_id"]), (2, ""))
+            self.assertEqual(draft["tracks"][1]["type"], "effect")
+            sticker = draft["materials"]["stickers"][0]
+            self.assertEqual((sticker["sticker_id"], sticker["resource_id"]), ("7237287015903972613", "7237287015903972613"))
+            sticker_segment = draft["tracks"][2]["segments"][0]
+            self.assertEqual(sticker_segment["clip"]["transform"], {"x": 0.6, "y": -0.5})
+            self.assertEqual(sticker_segment["render_index"], 14007)
+            self.assertEqual(validate_draft(result.output)["materials"], 3)
+
+    def test_extended_resource_operations_compile_to_native_materials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "screen.png"
+            image.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + b"\x00\x00\x00\x64\x00\x00\x00\x64")
+            store = AssetStore(root / "store")
+            audio = store.put(b"synthetic audio", suffix="m4a")
+            project_path = root / "project.json"
+            project_path.write_text(json.dumps({
+                "version": 1,
+                "canvas": {"width": 100, "height": 100, "fps": 30},
+                "tracks": [
+                    {"type": "image", "items": [{"src": "screen.png", "at": 0, "duration": 2, "ref": "screen"}]},
+                    {"type": "text", "items": [{"text": "hello", "at": 0, "duration": 2, "ref": "title"}]},
+                    {"type": "audio", "items": [{"resource": "music", "at": 0, "duration": 2, "ref": "audio"}]},
+                ],
+                "operations": [
+                    {"type": "animation", "target": "screen", "resource": "video-animation", "animationType": "in", "duration": 0.4},
+                    {"type": "text-animation", "target": "title", "resource": "text-animation", "animationType": "loop", "duration": 1.2},
+                    {"type": "audio-effect", "target": "audio", "resource": "audio-effect"},
+                    {"type": "font", "target": "title", "resource": "font"},
+                    {"type": "text-effect", "target": "title", "resource": "word-art"},
+                    {"type": "mask", "target": "screen", "resource": "mask", "width": 0.8, "height": 0.4, "feather": 0.2},
+                ],
+            }), encoding="utf-8")
+            resource_kinds = {
+                "video-animation": "animation", "text-animation": "text-animation",
+                "audio-effect": "audio-effect", "font": "font",
+                "word-art": "text-effect", "mask": "mask",
+            }
+            locked = {
+                key: {"provider": "capcut", "kind": kind, "name": key, "resource_id": f"1000000{index}", "effect_id": f"1000000{index}"}
+                for index, (key, kind) in enumerate(resource_kinds.items())
+            }
+            locked["music"] = {"provider": "capcut", "kind": "music", "id": "music", "name": "music", "asset_hash": audio.digest}
+            lock = root / "clipcraft.lock"
+            lock.write_text(json.dumps({"version": 1, "resources": locked}), encoding="utf-8")
+
+            result = compile_project(load_project(project_path), root / "build", lock_path=lock, asset_store=store.root)
+            draft = json.loads((result.output / "draft_content.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(draft["materials"]["material_animations"]), 2)
+            self.assertEqual(draft["materials"]["material_animations"][0]["animations"][0]["type"], "in")
+            self.assertEqual(draft["materials"]["material_animations"][1]["animations"][0]["type"], "loop")
+            self.assertEqual(draft["materials"]["audio_effects"][0]["type"], "audio_effect")
+            self.assertEqual(draft["materials"]["effects"][0]["type"], "text_effect")
+            self.assertEqual(draft["materials"]["common_mask"][0]["config"]["feather"], 0.2)
+            text = draft["materials"]["texts"][0]
+            style = json.loads(text["content"])["styles"][0]
+            self.assertEqual(style["font"]["id"], "10000003")
+            self.assertEqual(style["effectStyle"]["id"], "10000004")
+            self.assertEqual(len(draft["tracks"]), 3)
 
     def test_registration_is_plan_first_and_backed_up(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -156,13 +230,15 @@ class DraftTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             image = root / "screen.png"
-            image.write_bytes(b"synthetic png bytes")
+            image.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8 + b"\x00\x00\x05\xa0\x00\x00\x03\x84")
             project_path = root / "project.json"
-            project_path.write_text(json.dumps({"version": 1, "canvas": {"width": 1080, "height": 1920, "fps": 30}, "tracks": [{"type": "image", "items": [{"src": "screen.png", "at": 0, "duration": 2, "ref": "screen"}]}]}), encoding="utf-8")
+            project_path.write_text(json.dumps({"version": 1, "canvas": {"width": 1080, "height": 1920, "fps": 30}, "tracks": [{"type": "image", "items": [{"src": "screen.png", "at": 0, "duration": 2, "ref": "screen", "fit": "cover"}]}]}), encoding="utf-8")
             result = compile_project(load_project(project_path), root / "build")
             draft = json.loads((result.output / "draft_content.json").read_text(encoding="utf-8"))
             self.assertEqual(draft["tracks"][0]["type"], "video")
             self.assertEqual(draft["materials"]["videos"][0]["type"], "photo")
+            self.assertEqual((draft["materials"]["videos"][0]["width"], draft["materials"]["videos"][0]["height"]), (1440, 900))
+            self.assertAlmostEqual(draft["tracks"][0]["segments"][0]["clip"]["scale"]["x"], 128 / 45)
             self.assertFalse(draft["materials"]["videos"][0]["has_audio"])
             validation = validate_draft(result.output)
             self.assertEqual(validation["media_files"], 1)
