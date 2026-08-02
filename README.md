@@ -85,7 +85,7 @@ service.
 The unified `clipcraft project render` command can invoke a separately supplied
 native runner after preflight. The runner is not distributed by this package;
 see the public
-[headless rendering guide](https://clipcraft-labs.docs.buildwithfern.com/headless-rendering).
+[headless rendering guide](https://clipcraft-labs.docs.buildwithfern.com/guides/build-projects/headless-rendering).
 
 Current tracks include video, still images, audio, and text. Operations include
 locked scene effects, filters, transitions, caption templates, body effects,
