@@ -5,10 +5,21 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from capcut_draft.packager import PackageError, package_draft, render_preflight
+from capcut_draft.packager import PackageError, ResourceResolver, package_draft, render_preflight
 
 
 class PackageDraftTests(unittest.TestCase):
+    def test_resource_resolver_prefers_extracted_download_cache_payload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            version = root / "123456789" / "bundle-md5"
+            extracted = version / "extracted"
+            extracted.mkdir(parents=True)
+            (version / "resource.download").write_bytes(b"archive")
+            (extracted / "config.json").write_text("{}", encoding="utf-8")
+
+            self.assertEqual(ResourceResolver(roots=[root]).resolve("123456789"), extracted.resolve())
+
     def test_packages_resources_and_rewrites_draft_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

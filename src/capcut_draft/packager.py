@@ -244,7 +244,14 @@ class ResourceResolver:
             for resource_dir in candidates:
                 if resource_dir.is_dir():
                     children = [item for item in resource_dir.iterdir() if not item.name.startswith(".")]
-                    matches.extend(children or [resource_dir])
+                    for child in children or [resource_dir]:
+                        # Clipcraft's persistent download cache stores the
+                        # verified archive and its usable payload together as
+                        # <id>/<version>/resource.download + extracted/. The
+                        # native engine must receive the extracted payload,
+                        # not the version container beside it.
+                        extracted = child / "extracted" if child.is_dir() else None
+                        matches.append(extracted if extracted and extracted.is_dir() else child)
         return max(matches, key=lambda item: item.stat().st_mtime_ns) if matches else None
 
 
